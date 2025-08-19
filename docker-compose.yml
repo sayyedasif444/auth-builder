@@ -1,0 +1,70 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: auth_builder_postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-auth_builder}
+      POSTGRES_USER: ${POSTGRES_USER:-auth_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-auth_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-auth_user} -d ${POSTGRES_DB:-auth_builder}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  backend:
+    build: .
+    container_name: auth_builder_backend
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-auth_builder}
+      DB_USER: ${DB_USER:-auth_user}
+      DB_PASSWORD: ${DB_PASSWORD:-auth_password}
+      JWT_SECRET: ${JWT_SECRET}
+      DEFAULT_SMTP_HOST: ${DEFAULT_SMTP_HOST:-smtp.zoho.com}
+      DEFAULT_SMTP_PORT: ${DEFAULT_SMTP_PORT:-465}
+      DEFAULT_SMTP_SECURE: ${DEFAULT_SMTP_SECURE:-true}
+      DEFAULT_SMTP_USER: ${DEFAULT_SMTP_USER}
+      DEFAULT_SMTP_PASS: ${DEFAULT_SMTP_PASS}
+      DEFAULT_SMTP_REQUIRE_TLS: ${DEFAULT_SMTP_REQUIRE_TLS:-true}
+      DEFAULT_SMTP_AUTH_METHOD: ${DEFAULT_SMTP_AUTH_METHOD:-PLAIN}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    volumes:
+      - .:/app
+      - /app/node_modules
+
+  frontend:
+    build: ./frontend
+    container_name: auth_builder_frontend
+    ports:
+      - "5173:5173"
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:3000/api}
+      VITE_DEV_SERVER_HOST: 0.0.0.0
+      VITE_DEV_SERVER_PORT: 5173
+    depends_on:
+      - backend
+    restart: unless-stopped
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    stdin_open: true
+    tty: true
+
+volumes:
+  postgres_data:
+    driver: local
