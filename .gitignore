@@ -128,5 +128,10 @@ scripts/check_user.js
 scripts/show_user.js
 scripts/generate_hash.js
 
-# Keep example env file
-!env.example
+# Environment files (CRITICAL - Contains real credentials)
+.env*
+env.production
+env.local
+env.development
+env.test
+env.example
