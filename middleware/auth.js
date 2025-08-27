@@ -23,15 +23,25 @@ const auth = async (req, res, next) => {
     // Extend token expiry on each API call
     await Token.extendExpiry(token);
 
-    // Set user info in request
-    req.user = {
-      id: tokenData.user_id,
-      email: tokenData.email,
-      is_super_user: tokenData.is_super_user
-    };
-
-    // Set token info for potential use
-    req.token = tokenData;
+    // Handle different token types
+    if (tokenData.is_client_session) {
+      // Client session token
+      req.client = {
+        id: tokenData.client_id,
+        realm_id: tokenData.realm_id
+      };
+      req.token = tokenData;
+      req.isClientSession = true;
+    } else {
+      // User token
+      req.user = {
+        id: tokenData.user_id,
+        email: tokenData.email,
+        is_super_user: tokenData.is_super_user
+      };
+      req.token = tokenData;
+      req.isClientSession = false;
+    }
 
     next();
   } catch (error) {
@@ -42,6 +52,10 @@ const auth = async (req, res, next) => {
 
 const requireSuperUser = async (req, res, next) => {
   try {
+    if (req.isClientSession) {
+      return res.status(403).json({ error: 'Access denied. User authentication required.' });
+    }
+    
     if (!req.user.is_super_user) {
       return res.status(403).json({ error: 'Access denied. Super user privileges required.' });
     }
@@ -51,4 +65,15 @@ const requireSuperUser = async (req, res, next) => {
   }
 };
 
-module.exports = { auth, requireSuperUser };
+const requireUserAuth = async (req, res, next) => {
+  try {
+    if (req.isClientSession) {
+      return res.status(403).json({ error: 'Access denied. User authentication required.' });
+    }
+    next();
+  } catch (error) {
+    res.status(500).json({ error: 'Server error.' });
+  }
+};
+
+module.exports = { auth, requireSuperUser, requireUserAuth };

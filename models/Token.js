@@ -33,9 +33,15 @@ class Token {
   static async findByAccessToken(accessToken) {
     try {
       const query = `
-        SELECT t.*, u.email, u.is_super_user 
+        SELECT t.*, 
+               u.email, 
+               u.is_super_user,
+               c.name as client_name,
+               r.name as realm_name
         FROM tokens t 
-        JOIN users u ON t.user_id = u.id 
+        LEFT JOIN users u ON t.user_id = u.id 
+        LEFT JOIN clients c ON t.client_id = c.id
+        LEFT JOIN realms r ON t.realm_id = r.id
         WHERE t.access_token = $1 AND t.is_active = true
       `;
       const result = await db.query(query, [accessToken]);
@@ -110,8 +116,14 @@ class Token {
         throw new Error('Invalid access token');
       }
 
-      // Extend expiry time by resetting it
-      const expiryTime = tokenData.is_super_user ? 60 : 60; // minutes
+      // Extend expiry time based on token type
+      let expiryTime;
+      if (tokenData.is_client_session) {
+        expiryTime = 24 * 60; // 24 hours for client sessions
+      } else {
+        expiryTime = tokenData.is_super_user ? 60 : 60; // 60 minutes for user tokens
+      }
+      
       const expiresAt = new Date(Date.now() + expiryTime * 60 * 1000);
       
       const updateQuery = `
@@ -184,6 +196,34 @@ class Token {
       
       const result = await db.query(query, [userId]);
       return result.rows;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  static async createClientSession(clientId, realmId) {
+    try {
+      // Generate custom access token (32 characters)
+      const accessToken = crypto.randomBytes(16).toString('hex');
+      
+      // Generate refresh token (64 characters)
+      const refreshToken = crypto.randomBytes(32).toString('hex');
+      
+      // Set expiry time (24 hours for client sessions)
+      const accessExpiryTime = 24 * 60; // 24 hours in minutes
+      const refreshExpiryTime = 7 * 24 * 60; // 7 days in minutes
+      
+      const accessExpiresAt = new Date(Date.now() + accessExpiryTime * 60 * 1000);
+      const refreshExpiresAt = new Date(Date.now() + refreshExpiryTime * 60 * 1000);
+      
+      const query = `
+        INSERT INTO tokens (client_id, realm_id, access_token, refresh_token, expires_at, refresh_expires_at, is_client_session) 
+        VALUES ($1, $2, $3, $4, $5, $6, true) 
+        RETURNING *
+      `;
+      
+      const result = await db.query(query, [clientId, realmId, accessToken, refreshToken, accessExpiresAt, refreshExpiresAt]);
+      return result.rows[0];
     } catch (error) {
       throw error;
     }

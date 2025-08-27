@@ -226,7 +226,7 @@ $$ language 'plpgsql';
 INSERT INTO users (email, password, is_super_user, first_name, last_name) 
 VALUES (
     'admin@admin.com', 
-    '$2a$10$Kxs2wuD95fmBWyZwMG7WTundl/DNExk4Qnb8ZuOcWlxfHzGzHYsMq', 
+    '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 
     true, 
     'Admin', 
     'User'

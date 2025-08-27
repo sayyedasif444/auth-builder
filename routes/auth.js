@@ -10,6 +10,56 @@ const Role = require('../models/Role');
 
 const router = express.Router();
 
+// Client login endpoint - allows login with just client ID
+router.post('/client-login', [
+  body('client_id').isString().isLength({ min: 1 })
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { client_id } = req.body;
+
+    // Find client by client_id
+    const client = await Client.findByClientId(client_id);
+    if (!client) {
+      return res.status(401).json({ error: 'Invalid client ID' });
+    }
+
+    // Check if client is active
+    if (!client.is_active) {
+      return res.status(401).json({ error: 'Client is inactive' });
+    }
+
+    // Create a temporary client session token
+    const tempTokenData = await Token.createClientSession(client.id, client.realm_id);
+    
+    // Get realm info
+    const realm = await require('../models/Realm').findById(client.realm_id);
+
+    res.json({
+      message: 'Client login successful',
+      client: {
+        id: client.id,
+        name: client.name,
+        description: client.description,
+        realm_id: client.realm_id,
+        realm_name: realm?.name
+      },
+      access_token: tempTokenData.access_token,
+      refresh_token: tempTokenData.refresh_token,
+      expires_at: tempTokenData.expires_at,
+      is_client_session: true
+    });
+
+  } catch (error) {
+    console.error('Client login error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // Login endpoint (2FA-aware)
 router.post('/login', [
   body('email').isEmail().normalizeEmail(),
@@ -33,6 +83,14 @@ router.post('/login', [
     const isValidPassword = await User.verifyPassword(password, user.password);
     if (!isValidPassword) {
       return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    // For non-superusers, check if they have a client_id associated
+    if (!user.is_super_user && !user.client_id) {
+      return res.status(403).json({ 
+        error: 'Access denied. User must be associated with a client to login.',
+        code: 'CLIENT_REQUIRED'
+      });
     }
 
     // If user is linked to client and 2FA enabled on that client, send OTP and expect validate-otp
